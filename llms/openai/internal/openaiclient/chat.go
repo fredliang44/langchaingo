@@ -418,7 +418,7 @@ func combineStreamingChatResponse(ctx context.Context, payload *ChatRequest, res
 	}
 
 	for streamResponse := range responseChan {
-		if len(streamResponse.Choices) == 0 {
+		if len(streamResponse.Choices) == 0 && streamResponse.Usage == nil {
 			continue
 		}
 
