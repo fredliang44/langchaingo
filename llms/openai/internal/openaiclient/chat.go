@@ -292,6 +292,7 @@ type StreamedChatResponsePayload struct {
 		} `json:"delta,omitempty"`
 		FinishReason FinishReason `json:"finish_reason,omitempty"`
 	} `json:"choices,omitempty"`
+	Usage *ChatUsage `json:"usage,omitempty"`
 }
 
 // FunctionDefinition is a definition of a function that can be called by the model.
@@ -419,6 +420,10 @@ func combineStreamingChatResponse(ctx context.Context, payload *ChatRequest, res
 	for streamResponse := range responseChan {
 		if len(streamResponse.Choices) == 0 {
 			continue
+		}
+
+		if streamResponse.Usage != nil {
+			response.Usage = *streamResponse.Usage
 		}
 		choice := streamResponse.Choices[0]
 		chunk := []byte(choice.Delta.Content)
