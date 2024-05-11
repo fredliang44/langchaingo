@@ -37,6 +37,9 @@ type ChatRequest struct {
 	// ResponseFormat is the format of the response.
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
 
+	// StreamOptions is the stream options for the OpenAI client.
+	StreamOptions *StreamOptions `json:"stream_options,omitempty"`
+
 	// LogProbs indicates whether to return log probabilities of the output tokens or not.
 	// If true, returns the log probabilities of each output token returned in the content of message.
 	// This option is currently not available on the gpt-4-vision-preview model.
@@ -99,6 +102,12 @@ type ToolCall struct {
 // ResponseFormat is the format of the response.
 type ResponseFormat struct {
 	Type string `json:"type"`
+}
+
+// StreamOptions is the stream options for the OpenAI client.
+type StreamOptions struct {
+	// Options for streaming response. Only set this when you set stream: true.
+	IncludeUsage bool `json:"include_usage,omitempty"`
 }
 
 // ChatMessage is a message in a chat request.
@@ -318,6 +327,9 @@ type FunctionCall struct {
 func (c *Client) createChat(ctx context.Context, payload *ChatRequest) (*ChatCompletionResponse, error) {
 	if payload.StreamingFunc != nil {
 		payload.Stream = true
+		payload.StreamOptions = &StreamOptions{
+			IncludeUsage: true,
+		}
 	}
 	// Build request payload
 
