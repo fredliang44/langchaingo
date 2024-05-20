@@ -184,6 +184,11 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageConten
 	if o.CallbacksHandler != nil {
 		o.CallbacksHandler.HandleLLMGenerateContentEnd(ctx, response)
 	}
+	//response.Usage = llms.Usage{
+	//	PromptTokens:     result.Usage.PromptTokens,
+	//	CompletionTokens: result.Usage.CompletionTokens,
+	//	TotalTokens:      result.Usage.TotalTokens,
+	//}
 	return response, nil
 }
 

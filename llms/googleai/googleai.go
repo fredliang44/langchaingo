@@ -252,9 +252,9 @@ func generateFromSingleMessage(ctx context.Context, model *genai.GenerativeModel
 		return &llms.ContentResponse{
 			Choices: choices,
 			Usage: llms.Usage{
-				PromptTokens:    int(resp.UsageMetadata.PromptTokenCount),
-				CompletionToken: int(resp.UsageMetadata.CandidatesTokenCount),
-				TotalTokens:     int(resp.UsageMetadata.TotalTokenCount),
+				PromptTokens:     int(resp.UsageMetadata.PromptTokenCount),
+				CompletionTokens: int(resp.UsageMetadata.CandidatesTokenCount),
+				TotalTokens:      int(resp.UsageMetadata.TotalTokenCount),
 			},
 		}, err
 	}
@@ -299,9 +299,9 @@ func generateFromMessages(ctx context.Context, model *genai.GenerativeModel, mes
 		return &llms.ContentResponse{
 			Choices: choices,
 			Usage: llms.Usage{
-				PromptTokens:    int(resp.UsageMetadata.PromptTokenCount),
-				CompletionToken: int(resp.UsageMetadata.CandidatesTokenCount),
-				TotalTokens:     int(resp.UsageMetadata.TotalTokenCount),
+				PromptTokens:     int(resp.UsageMetadata.PromptTokenCount),
+				CompletionTokens: int(resp.UsageMetadata.CandidatesTokenCount),
+				TotalTokens:      int(resp.UsageMetadata.TotalTokenCount),
 			},
 		}, err
 	}
@@ -340,9 +340,9 @@ DoStream:
 
 		if resp.UsageMetadata != nil {
 			response.Usage = llms.Usage{
-				PromptTokens:    int(resp.UsageMetadata.PromptTokenCount),
-				CompletionToken: int(resp.UsageMetadata.CandidatesTokenCount),
-				TotalTokens:     int(resp.UsageMetadata.TotalTokenCount),
+				PromptTokens:     int(resp.UsageMetadata.PromptTokenCount),
+				CompletionTokens: int(resp.UsageMetadata.CandidatesTokenCount),
+				TotalTokens:      int(resp.UsageMetadata.TotalTokenCount),
 			}
 		}
 

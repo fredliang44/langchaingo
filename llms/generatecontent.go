@@ -145,9 +145,9 @@ type ContentResponse struct {
 }
 
 type Usage struct {
-	PromptTokens    int `json:"prompt_tokens"`
-	CompletionToken int `json:"completion_tokens"`
-	TotalTokens     int `json:"total_tokens"`
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
 }
 
 // ContentChoice is one of the response choices returned by GenerateContent

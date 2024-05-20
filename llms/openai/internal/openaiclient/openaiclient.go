@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/tmc/langchaingo/llms"
 	"net/http"
 	"strings"
 )
@@ -73,7 +74,8 @@ func New(token string, model string, baseURL string, organization string,
 
 // Completion is a completion.
 type Completion struct {
-	Text string `json:"text"`
+	Text  string     `json:"text"`
+	Usage llms.Usage `json:"usage"`
 }
 
 // CreateCompletion creates a completion.
@@ -85,8 +87,14 @@ func (c *Client) CreateCompletion(ctx context.Context, r *CompletionRequest) (*C
 	if len(resp.Choices) == 0 {
 		return nil, ErrEmptyResponse
 	}
+
 	return &Completion{
 		Text: resp.Choices[0].Message.Content,
+		Usage: llms.Usage{
+			TotalTokens:      resp.Usage.TotalTokens,
+			PromptTokens:     resp.Usage.PromptTokens,
+			CompletionTokens: resp.Usage.CompletionTokens,
+		},
 	}, nil
 }
 
@@ -138,6 +146,11 @@ func (c *Client) CreateChat(ctx context.Context, r *ChatRequest) (*ChatCompletio
 	if len(resp.Choices) == 0 {
 		return nil, ErrEmptyResponse
 	}
+	resp.Usage = ChatUsage(llms.Usage{
+		TotalTokens:      resp.Usage.TotalTokens,
+		PromptTokens:     resp.Usage.PromptTokens,
+		CompletionTokens: resp.Usage.CompletionTokens,
+	})
 	return resp, nil
 }
 
