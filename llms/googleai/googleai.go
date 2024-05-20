@@ -363,7 +363,11 @@ DoStream:
 	}
 	choices, err := convertCandidates([]*genai.Candidate{candidate})
 	response.Choices = append(response.Choices, choices...)
-
+	response.Usage = llms.Usage{
+		PromptTokens:     int(candidate.TokenCount),
+		CompletionTokens: int(candidate.TokenCount),
+		TotalTokens:      int(candidate.TokenCount),
+	}
 	return response, err
 }
 

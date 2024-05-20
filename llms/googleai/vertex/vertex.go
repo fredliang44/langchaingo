@@ -109,10 +109,9 @@ func (g *Vertex) GenerateContent(ctx context.Context, messages []llms.MessageCon
 }
 
 // convertCandidates converts a sequence of genai.Candidate to a response.
-func convertCandidates(candidates []*genai.Candidate) (*llms.ContentResponse, error) {
+func convertCandidates(candidates []*genai.Candidate) (choices []*llms.ContentChoice, err error) {
 	var contentResponse llms.ContentResponse
 	var toolCalls []llms.ToolCall
-
 	for _, candidate := range candidates {
 		buf := strings.Builder{}
 
@@ -146,7 +145,7 @@ func convertCandidates(candidates []*genai.Candidate) (*llms.ContentResponse, er
 		metadata[CITATIONS] = candidate.CitationMetadata
 		metadata[SAFETY] = candidate.SafetyRatings
 
-		contentResponse.Choices = append(contentResponse.Choices,
+		choices = append(contentResponse.Choices,
 			&llms.ContentChoice{
 				Content:        buf.String(),
 				StopReason:     candidate.FinishReason.String(),
@@ -154,7 +153,7 @@ func convertCandidates(candidates []*genai.Candidate) (*llms.ContentResponse, er
 				ToolCalls:      toolCalls,
 			})
 	}
-	return &contentResponse, nil
+	return choices, nil
 }
 
 // convertParts converts between a sequence of langchain parts and genai parts.
@@ -248,7 +247,17 @@ func generateFromSingleMessage(ctx context.Context, model *genai.GenerativeModel
 		if len(resp.Candidates) == 0 {
 			return nil, ErrNoContentInResponse
 		}
-		return convertCandidates(resp.Candidates)
+		choices, err := convertCandidates(resp.Candidates)
+
+		return &llms.ContentResponse{
+			Choices: choices,
+			Usage: llms.Usage{
+				TotalTokens:      int(resp.UsageMetadata.TotalTokenCount),
+				PromptTokens:     int(resp.UsageMetadata.PromptTokenCount),
+				CompletionTokens: int(resp.UsageMetadata.CandidatesTokenCount),
+			},
+		}, err
+
 	}
 	iter := model.GenerateContentStream(ctx, convertedParts...)
 	return convertAndStreamFromIterator(ctx, iter, opts)
@@ -282,7 +291,15 @@ func generateFromMessages(ctx context.Context, model *genai.GenerativeModel, mes
 		if len(resp.Candidates) == 0 {
 			return nil, ErrNoContentInResponse
 		}
-		return convertCandidates(resp.Candidates)
+		choices, err := convertCandidates(resp.Candidates)
+		return &llms.ContentResponse{
+			Choices: choices,
+			Usage: llms.Usage{
+				TotalTokens:      int(resp.UsageMetadata.TotalTokenCount),
+				PromptTokens:     int(resp.UsageMetadata.PromptTokenCount),
+				CompletionTokens: int(resp.UsageMetadata.CandidatesTokenCount),
+			},
+		}, err
 	}
 	iter := session.SendMessageStream(ctx, reqContent.Parts...)
 	return convertAndStreamFromIterator(ctx, iter, opts)
@@ -297,6 +314,7 @@ func convertAndStreamFromIterator(ctx context.Context, iter *genai.GenerateConte
 	candidate := &genai.Candidate{
 		Content: &genai.Content{},
 	}
+	usage := llms.Usage{}
 DoStream:
 	for {
 		resp, err := iter.Next()
@@ -320,7 +338,13 @@ DoStream:
 		candidate.FinishReason = respCandidate.FinishReason
 		candidate.SafetyRatings = respCandidate.SafetyRatings
 		candidate.CitationMetadata = respCandidate.CitationMetadata
-
+		if resp.UsageMetadata != nil {
+			usage = llms.Usage{
+				PromptTokens:     int(resp.UsageMetadata.PromptTokenCount),
+				CompletionTokens: int(resp.UsageMetadata.CandidatesTokenCount),
+				TotalTokens:      int(resp.UsageMetadata.TotalTokenCount),
+			}
+		}
 		for _, part := range respCandidate.Content.Parts {
 			if text, ok := part.(genai.Text); ok {
 				if opts.StreamingFunc(ctx, []byte(text)) != nil {
@@ -330,7 +354,11 @@ DoStream:
 		}
 	}
 
-	return convertCandidates([]*genai.Candidate{candidate})
+	choices, err := convertCandidates([]*genai.Candidate{candidate})
+	return &llms.ContentResponse{
+		Choices: choices,
+		Usage:   usage,
+	}, err
 }
 
 // convertTools converts from a list of langchaingo tools to a list of genai
