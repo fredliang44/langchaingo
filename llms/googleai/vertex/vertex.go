@@ -210,7 +210,9 @@ func convertContent(content llms.MessageContent) (*genai.Content, error) {
 
 	switch content.Role {
 	case llms.ChatMessageTypeSystem:
-		return nil, ErrSystemRoleNotSupported
+		// TODO: waiting for system role support in gemini
+		c.Role = RoleUser
+		//return nil, ErrSystemRoleNotSupported
 	case llms.ChatMessageTypeAI:
 		c.Role = RoleModel
 	case llms.ChatMessageTypeHuman:
@@ -271,6 +273,18 @@ func generateFromMessages(ctx context.Context, model *genai.GenerativeModel, mes
 			return nil, err
 		}
 		history = append(history, content)
+	}
+
+	// gemini only support messages between user and model, so aggregate related messages sent by same role
+	for index := range history {
+		if index == 0 {
+			continue
+		}
+		if history[index-1].Role == history[index].Role {
+			history[index-1].Parts = append(history[index-1].Parts, history[index].Parts...)
+			history = append(history[:index], history[index+1:]...)
+			index--
+		}
 	}
 
 	// Given N total messages, genai's chat expects the first N-1 messages as

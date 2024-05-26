@@ -12,9 +12,22 @@ import (
 	"strings"
 )
 
+// https://docs.anthropic.com/en/api/messages
+type ContentPart struct {
+	Type        string       `json:"type"`
+	Text        string       `json:"text,omitempty"`
+	ImageSource *ImageSource `json:"source,omitempty"`
+}
+
+type ImageSource struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
+}
+
 type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string        `json:"role"`
+	Content []ContentPart `json:"content"`
 }
 
 type messagePayload struct {

@@ -55,6 +55,7 @@ func (c *Client) setCompletionDefaults(payload *completionPayload) {
 	if payload.StreamingFunc != nil {
 		payload.Stream = true
 	}
+
 }
 
 // nolint:lll
