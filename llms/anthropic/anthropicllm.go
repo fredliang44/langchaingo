@@ -60,6 +60,9 @@ func newClient(opts ...Option) (*anthropicclient.Client, error) {
     }
 
     return anthropicclient.New(options.token, options.model, options.baseURL,
+        anthropicclient.WithAnthropicVersion(options.anthropicVersion),
+        anthropicclient.WithVertexProjectID(options.vertexProjectID),
+        anthropicclient.WithVertexLocation(options.vertexLocation),
         anthropicclient.WithHTTPClient(options.httpClient),
         anthropicclient.WithLegacyTextCompletionsAPI(options.useLegacyTextCompletionsAPI),
     )
@@ -136,12 +139,18 @@ func generateMessagesContent(ctx context.Context, o *LLM, messages []llms.Messag
         Temperature:   opts.Temperature,
         TopP:          opts.TopP,
         StreamingFunc: opts.StreamingFunc,
+        TopK:          opts.TopK,
+        Tools:         opts.Tools,
+        ToolChoice:    opts.ToolChoice,
     })
     if err != nil {
         if o.CallbacksHandler != nil {
             o.CallbacksHandler.HandleLLMError(ctx, err)
         }
         return nil, err
+    }
+    if result == nil {
+        return nil, ErrEmptyResponse
     }
 
     choices := make([]*llms.ContentChoice, len(result.Content))

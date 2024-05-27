@@ -6,14 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/tmc/langchaingo/llms"
+	"io"
 	"net/http"
 	"strings"
 )
 
 const (
-	DefaultBaseURL = "https://api.anthropic.com/v1"
-
-	defaultModel = "claude-1.3"
+	DefaultBaseURL          = "https://api.anthropic.com/v1"
+	DefaultAnthropicVersion = "2023-06-01"
+	defaultModel            = "claude-1.3"
 )
 
 // ErrEmptyResponse is returned when the Anthropic API returns an empty response.
@@ -25,7 +27,10 @@ type Client struct {
 	Model   string
 	baseURL string
 
-	httpClient Doer
+	vertexProjectID  string
+	vertexLocation   string
+	httpClient       Doer
+	anthropicVersion string
 
 	// UseLegacyTextCompletionsAPI is a flag to use the legacy text completions API.
 	UseLegacyTextCompletionsAPI bool
@@ -37,6 +42,30 @@ type Option func(*Client) error
 // Doer performs a HTTP request.
 type Doer interface {
 	Do(req *http.Request) (*http.Response, error)
+}
+
+// WithVertexProjectID sets the Vertex project ID.
+func WithVertexProjectID(projectID string) Option {
+	return func(c *Client) error {
+		c.vertexProjectID = projectID
+		return nil
+	}
+}
+
+// WithVertexLocation sets the Vertex AI location.
+func WithVertexLocation(location string) Option {
+	return func(c *Client) error {
+		c.vertexLocation = location
+		return nil
+	}
+}
+
+// WithAnthropicVersion sets the Anthropic version.
+func WithAnthropicVersion(version string) Option {
+	return func(c *Client) error {
+		c.anthropicVersion = version
+		return nil
+	}
 }
 
 // WithHTTPClient allows setting a custom HTTP client.
@@ -120,14 +149,61 @@ type MessageRequest struct {
 	Temperature float64       `json:"temperature"`
 	MaxTokens   int           `json:"max_tokens,omitempty"`
 	TopP        float64       `json:"top_p,omitempty"`
-	StopWords   []string      `json:"stop_sequences,omitempty"`
-	Stream      bool          `json:"stream,omitempty"`
+	TopK        int           `json:"top_k,omitempty"`
+	Tools       []llms.Tool   `json:"tools,omitempty"`
+
+	// ToolChoice is the choice of tool to use, it can either be "none", "auto" (the default behavior), or a specific tool as described in the ToolChoice type.
+	ToolChoice any      `json:"tool_choice,omitempty"`
+	StopWords  []string `json:"stop_sequences,omitempty"`
+	Stream     bool     `json:"stream,omitempty"`
 
 	StreamingFunc func(ctx context.Context, chunk []byte) error `json:"-"`
 }
 
+func handleToolChoice(toolChoice any) (*ToolChoice, error) {
+	switch toolChoice.(type) {
+	case string:
+		return &ToolChoice{
+			Type: toolChoice.(string),
+		}, nil
+	case llms.Tool:
+		if toolChoice.(llms.Tool).Function == nil {
+			return nil, errors.New("tool choice function is nil")
+		}
+		return &ToolChoice{
+			Type: toolChoice.(llms.Tool).Type,
+			Name: toolChoice.(llms.Tool).Function.Name,
+		}, nil
+	default:
+		return nil, nil
+	}
+}
+
+func handleTools(tools []llms.Tool) ([]Tool, error) {
+	var resultTools []Tool
+	for _, tool := range tools {
+		if tool.Function == nil {
+			return nil, errors.New("tool choice function is nil")
+		}
+		resultTools = append(resultTools, Tool{
+			Name:        tool.Function.Name,
+			Description: tool.Function.Description,
+			InputSchema: tool.Function.Parameters,
+		})
+	}
+	return resultTools, nil
+}
+
 // CreateMessage creates message for the messages api.
 func (c *Client) CreateMessage(ctx context.Context, r *MessageRequest) (*MessageResponsePayload, error) {
+	toolChoice, err := handleToolChoice(r.ToolChoice)
+	if err != nil {
+		return nil, err
+	}
+	tools, err := handleTools(r.Tools)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := c.createMessage(ctx, &messagePayload{
 		Model:         r.Model,
 		Messages:      r.Messages,
@@ -138,6 +214,9 @@ func (c *Client) CreateMessage(ctx context.Context, r *MessageRequest) (*Message
 		TopP:          r.TopP,
 		Stream:        r.Stream,
 		StreamingFunc: r.StreamingFunc,
+		TopK:          r.TopK,
+		Tools:         tools,
+		ToolChoice:    toolChoice,
 	})
 	if err != nil {
 		return nil, err
@@ -147,17 +226,40 @@ func (c *Client) CreateMessage(ctx context.Context, r *MessageRequest) (*Message
 
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", c.token)
-	// TODO: expose version as a option/parameter
-	req.Header.Set("anthropic-version", "2023-06-01")
+
+	if c.vertexProjectID != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	} else {
+		req.Header.Set("x-api-key", c.token)
+	}
+
+	if c.anthropicVersion != "" {
+		req.Header.Set("anthropic-version", c.anthropicVersion)
+	} else {
+		// adjust version based on the vertex project ID
+		if c.vertexProjectID != "" {
+			req.Header.Set("anthropic-version", "vertex-2023-10-16")
+		} else {
+			req.Header.Set("anthropic-version", "2023-06-01")
+		}
+	}
+
 }
 
 func (c *Client) do(ctx context.Context, path string, payloadBytes []byte) (*http.Response, error) {
-	if c.baseURL == "" {
-		c.baseURL = DefaultBaseURL
-	}
+	var url string
 
-	url := c.baseURL + path
+	if c.vertexProjectID == "" {
+		if c.baseURL == "" {
+			c.baseURL = DefaultBaseURL
+		}
+
+		url = c.baseURL + path
+	} else {
+		url = fmt.Sprintf("https://%s-aiplatform.googleapis."+
+			"com/v1/projects/%s/locations/%s/publishers/anthropic/models/%s:streamRawPredict",
+			c.vertexLocation, c.vertexProjectID, c.vertexLocation, c.Model)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payloadBytes))
 	if err != nil {
@@ -183,9 +285,22 @@ type errorMessage struct {
 func (c *Client) decodeError(resp *http.Response) error {
 	msg := fmt.Sprintf("API returned unexpected status code: %d", resp.StatusCode)
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("%s: %w", msg, err)
+	}
+
 	var errResp errorMessage
-	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+	if err := json.Unmarshal(respBody, &errResp); err != nil {
 		return errors.New(msg) // nolint:goerr113
 	}
-	return fmt.Errorf("%s: %s", msg, errResp.Error.Message) // nolint:goerr113
+
+	// nolint:goerr113
+	return &llms.LLMError{
+		Message:      fmt.Sprintf("%s: %s", msg, errResp.Error.Message),
+		StatusCode:   resp.StatusCode,
+		ErrorType:    errResp.Error.Type,
+		ErrorMessage: errResp.Error.Message,
+		RawResponse:  respBody,
+	}
 }
